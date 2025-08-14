@@ -3,10 +3,10 @@ Python Script Pseudocode for PDF Retrieval
 
 
 BEGIN
-  SET keywords TO ["artificial intelligence chatbot",
-                     "AI in education",
-                     "blockchain in education",
-                     "educational blockchain algorithms"]
+  SET keywords TO ["keyword1",
+                     "keyword2",
+                     "keyword3",
+                     "keyword4"]
   CREATE directory "papers" IF it does not exist
   PROCEDURE download_arxiv_papers(keyword, max_papers)
       DECLARE downloaded_ids AS empty set
