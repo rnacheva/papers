@@ -1,0 +1,62 @@
+BEGIN
+  SET keywords TO ["artificial intelligence chatbot",
+                     "AI in education",
+                     "blockchain in education",
+                     "educational blockchain algorithms"]
+  CREATE directory "papers" IF it does not exist
+  PROCEDURE download_arxiv_papers(keyword, max_papers)
+      DECLARE downloaded_ids AS empty set
+      SET per_request TO 100
+      SET total_downloaded TO 0
+      FOR start FROM 0 TO max_papers STEP per_request DO
+          SET remaining TO max_papers - total_downloaded
+          IF remaining < per_request THEN
+              SET fetch_count TO remaining
+          ELSE
+              SET fetch_count TO per_request
+          ENDIF
+          SET query TO keyword WITH spaces replaced by "+"
+          SET url TO "http://export.arxiv.org/api/query?search_query=all:" + query + 
+                       "&start=" + start + "&max_results=" + fetch_count
+          SEND GET request TO url AND STORE result in response
+          PARSE XML from response.content INTO root
+          FIND all entries in root
+          IF entries IS EMPTY THEN
+              BREAK FOR loop
+          ENDIF
+          SET index TO 0
+          WHILE index < LENGTH(entries) DO
+              SET entry TO entries[index]
+              SET arxiv_id TO last segment of entry.id
+              IF arxiv_id IN downloaded_ids THEN
+                   INCREMENT index
+                   CONTINUE WHILE
+              ENDIF
+              ADD arxiv_id TO downloaded_ids
+              SET title TO entry.title (trimmed and without newlines)
+              SET pdf_url TO "https://arxiv.org/pdf/" + arxiv_id + ".pdf"
+              SEND GET request TO pdf_url AND STORE result in pdf_response
+              CASE pdf_response.status_code OF
+                    200:
+                      SET filename TO "papers/" + arxiv_id + ".pdf"
+                      WRITE pdf_response.content TO filename
+                      PRINT "Downloaded: " + title + " (" + arxiv_id + ")"
+                  OTHERWISE:
+                      PRINT "Failed to download: " + title + " (" + arxiv_id + ")"
+              ENDCASE
+              INCREMENT total_downloaded
+              IF total_downloaded >= max_papers THEN
+                  RETURN FROM PROCEDURE
+              ENDIF
+              INCREMENT index
+          ENDWHILE
+          WAIT 3 seconds
+      ENDFOR
+  ENDPROCEDURE
+  SET k_index TO 0
+  REPEAT
+      PRINT "Searching for: " + keywords[k_index]
+      CALL download_arxiv_papers(keywords[k_index], 1000)
+      INCREMENT k_index
+  UNTIL k_index >= LENGTH(keywords)
+END
