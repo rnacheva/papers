@@ -1,0 +1,236 @@
+import tkinter as tk
+from tkinter import scrolledtext, filedialog, messagebox, simpledialog, PhotoImage
+import random
+from collections import defaultdict
+import pandas as pd
+import matplotlib.pyplot as plt
+import sys
+import os
+
+SEQUENCE
+  CLASS DomainKnowledge
+    SEQUENCE
+      FUNCTION __init__()
+        SET self.topics = empty map
+        SET self.general_knowledge_words = empty set
+        SET self.default_domain_words = empty set
+      END FUNCTION
+      
+      FUNCTION add_topic(topic_name)
+        IF-THEN topic_name NOT IN self.topics
+          SET self.topics[topic_name] = new map with "concepts", "quiz_questions", and "explanations"
+        END-IF
+      END FUNCTION
+      
+      FUNCTION add_concept_to_topic(topic_name, concept)
+        IF-THEN topic_name IN self.topics
+          ADD concept to self.topics[topic_name]["concepts"]
+        END-IF
+      END FUNCTION
+      
+      FUNCTION add_quiz_question(topic_name, question, options, correct_answer)
+        IF-THEN topic_name IN self.topics
+          FOR each_q IN self.topics[topic_name]["quiz_questions"]
+            IF-THEN each_q.question is question
+              RETURN FALSE
+            END-IF
+          END FOR
+          ADD new question object to self.topics[topic_name]["quiz_questions"]
+          RETURN TRUE
+        END-IF
+        RETURN FALSE
+      END FUNCTION
+      
+      FUNCTION add_explanation(topic_name, question_text, explanation_text)
+        IF-THEN topic_name IN self.topics
+          SET self.topics[topic_name]["explanations"][question_text] = explanation_text
+        END-IF
+      END FUNCTION
+      
+      FUNCTION get_quiz_questions_for_topic(topic_name, num_questions)
+        IF-THEN topic_name IN self.topics
+          SET questions = self.topics[topic_name]["quiz_questions"]
+          IF-THEN num_questions is NULL
+            RETURN questions
+          ELSE
+            RETURN random sample of questions
+          END-IF
+        END-IF
+        RETURN empty list
+      END FUNCTION
+      
+      FUNCTION get_all_quiz_questions()
+        SET all_questions = empty list
+        FOR each_topic_name, data IN self.topics
+          FOR each_q IN data.quiz_questions
+            ADD new object with topic and question data to all_questions
+          END FOR
+        END FOR
+        RETURN all_questions
+      END FUNCTION
+      
+      FUNCTION get_explanation_for_question(topic_name, question_text)
+        IF-THEN topic_name IN self.topics
+          RETURN self.topics[topic_name]["explanations"].get(question_text)
+        END-IF
+        RETURN "Topic not found."
+      END FUNCTION
+      
+      FUNCTION set_general_knowledge_words(words)
+        SET self.general_knowledge_words = set of words
+      END FUNCTION
+      
+      FUNCTION set_default_domain_words(words)
+        SET self.default_domain_words = set of words
+      END FUNCTION
+    END SEQUENCE
+  END CLASS
+  
+  ---
+  
+  CLASS DecentralizedEducationEnvironment
+    SEQUENCE
+      FUNCTION __init__(log_func)
+        SET self.log_func = log_func
+        SET self.domain_knowledge = new DomainKnowledge()
+        SET self.user_agent = new UserAgent(log_func)
+        SET self.curriculum_agent = new CurriculumAgent(self.domain_knowledge, log_func)
+        SET self.assessment_agent = new AssessmentAgent(self.domain_knowledge, log_func)
+        SET self.mentor_agent = new MentorAgent(self.domain_knowledge, log_func)
+        SET self.simulate_score_function = new SimulateScoreFunction(self.domain_knowledge, self.mentor_agent, self.assessment_agent, log_func)
+        SET self.simulation_results = empty list
+        SET self.custom_quiz_loaded = FALSE
+        SET self.custom_quiz_topic = NULL
+      END FUNCTION
+      
+      FUNCTION load_quiz_from_txt(filepath)
+        SET topic_name = "Custom Quiz"
+        SET questions_parsed = 0
+        SET explanations_parsed = 0
+        TRY
+          READ content from filepath
+          IF-THEN content starts with "# TOPIC:"
+            EXTRACT topic_name from content
+            REMOVE topic line from content
+          END-IF
+          CALL self.domain_knowledge.add_topic(topic_name)
+          SET self.domain_knowledge.topics[topic_name]["quiz_questions"] = empty list
+          SET self.domain_knowledge.topics[topic_name]["explanations"] = empty map
+          SET quiz_blocks = split content by "---"
+          FOR each_block IN quiz_blocks
+            SET question = ""
+            SET options = empty list
+            SET correct_answer = ""
+            SET explanation = ""
+            SET lines = split block by newline
+            FOR each_line IN lines
+              CASE starts with
+                "QUESTION:": EXTRACT question
+                "OPTIONS:": EXTRACT options
+                "CORRECT:": EXTRACT correct_answer
+                "EXPLANATION:": EXTRACT explanation
+              END CASE
+            END FOR
+            IF-THEN question and options and correct_answer exist
+              IF-THEN self.domain_knowledge.add_quiz_question(topic_name, question, options, correct_answer)
+                INCREMENT questions_parsed
+                IF-THEN explanation exists
+                  CALL self.domain_knowledge.add_explanation(topic_name, question, explanation)
+                  INCREMENT explanations_parsed
+                END-IF
+              END-IF
+            END-IF
+          END FOR
+          IF-THEN questions_parsed > 0
+            SET self.custom_quiz_loaded = TRUE
+            SET self.custom_quiz_topic = topic_name
+            RETURN TRUE
+          ELSE
+            SET self.custom_quiz_loaded = FALSE
+            SET self.custom_quiz_topic = NULL
+            RETURN FALSE
+          END-IF
+        CATCH Exception as e
+          SET self.custom_quiz_loaded = FALSE
+          SET self.custom_quiz_topic = NULL
+          RETURN FALSE
+        END TRY
+      END FUNCTION
+      
+      FUNCTION run_simulation(num_learners, num_cycles, use_custom_quiz)
+        SEQUENCE
+          SET self.simulation_results = empty list
+          IF-THEN use_custom_quiz AND NOT self.custom_quiz_loaded
+            SET use_custom_quiz = FALSE
+          END-IF
+          IF-THEN self.domain_knowledge.topics is empty
+            CALL self.curriculum_agent.add_topic("Python Basics")
+            CALL self.curriculum_agent.add_topic("Data Structures")
+          END-IF
+          
+          SET learners = empty list
+          FOR i FROM 1 TO num_learners
+            SET proficiency = random choice from ["low", "medium", "high"]
+            ADD self.user_agent.generate_learner_profile(new id, proficiency) to learners
+          END FOR
+          
+          FOR cycle FROM 1 TO num_cycles
+            FOR each_learner IN learners
+              IF-THEN-ELSE use_custom_quiz AND self.custom_quiz_topic is NOT NULL
+                THEN
+                  SET topic_for_cycle = self.custom_quiz_topic
+                  SET num_questions_to_ask = number of questions in custom quiz
+                ELSE
+                  SET topic_for_cycle = random topic from available topics
+                  SET num_questions_to_ask = 5
+              END-IF
+              
+              SET generated_quiz = self.assessment_agent.generate_quiz(each_learner, topic_for_cycle, num_questions_to_ask)
+              
+              IF-THEN generated_quiz and generated_quiz.questions are NOT empty
+                SET simulated_answers = self.simulate_learner_answers(each_learner, generated_quiz)
+                SET result = self.simulate_score_function.evaluate_quiz(generated_quiz, simulated_answers, each_learner)
+                ADD result to self.simulation_results
+              END-IF
+            END FOR
+          END FOR
+          RETURN self.simulation_results
+        END SEQUENCE
+      END FUNCTION
+      
+      FUNCTION simulate_learner_answers(learner_profile, quiz_data)
+        SEQUENCE
+          SET simulated_answers = empty map
+          SET proficiency_base_accuracy = map with "low", "medium", "high" values
+          SET question_words = empty set
+          FOR each_q_obj IN quiz_data.questions
+            ADD words from question and options to question_words
+          END FOR
+          
+          SET general_knowledge_match_count = number of shared words with self.domain_knowledge.general_knowledge_words
+          SET domain_knowledge_match_count = number of shared words with self.domain_knowledge.default_domain_words
+          
+          SET knowledge_boost = 0
+          IF-THEN general_knowledge_match_count > 0
+            SET knowledge_boost = knowledge_boost + 0.05 * (general_knowledge_match_count / 5)
+          END-IF
+          IF-THEN domain_knowledge_match_count > 0
+            SET knowledge_boost = knowledge_boost + 0.1 * (domain_knowledge_match_count / 5)
+          END-IF
+          
+          FOR each_question_obj IN quiz_data.questions
+            SET current_confidence_in_question = learner_profile.knowledge_state[(quiz_data.topic, question_obj.question)]
+            SET effective_probability_correct = (0.5 * proficiency_base_accuracy[learner_profile.proficiency_level]) + (0.3 * knowledge_boost) + (0.2 * current_confidence_in_question)
+            
+            IF-THEN random number is less than effective_probability_correct
+              SET simulated_answers[question_obj.question] = question_obj.correct_answer
+            ELSE
+              SET simulated_answers[question_obj.question] = random wrong answer from options
+            END-IF
+          END FOR
+          RETURN simulated_answers
+        END SEQUENCE
+      END FUNCTION
+    END SEQUENCE
+  END CLASS
+END SEQUENCE
