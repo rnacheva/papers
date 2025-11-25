@@ -1,0 +1,245 @@
+Pseudocode for the Digital Accessibility Audit Python Program
+
+SEQUENCE
+  INITIALIZE AccessibilitySimulatorApp
+  CREATE GUI WINDOW
+  SET WINDOW TITLE "Web Environment Accessibility Testing"
+  SET WINDOW SIZE
+  LOAD AND SET WINDOW ICON (IF AVAILABLE)
+  INITIALIZE profiles_vars, tasks_vars, all_simulated_users, url_text, results_df, simulation_thread
+
+  PROCEDURE create_widgets()
+    SEQUENCE
+      CREATE LABEL "Enter URLs (one per line):"
+      CREATE SCROLLEDTEXT WIDGET for URL input
+      CREATE LABELFRAME "Select User Profiles"
+      FOR EACH profile IN PROFILES
+        CREATE BOOLEAN_VAR for profile checkbox
+        CREATE CHECKBUTTON for profile
+        ADD checkbox to profiles_vars
+      END FOR
+      CREATE LABELFRAME "Select Tasks"
+      FOR EACH task IN TASKS
+        CREATE BOOLEAN_VAR for task checkbox
+        CREATE CHECKBUTTON for task
+        ADD checkbox to tasks_vars
+      END FOR
+      CREATE FRAME for buttons
+      CREATE "Run the Test" BUTTON, command start_simulation
+      CREATE "Export Results to Excel" BUTTON, command export_to_excel
+      CREATE "Export Results to PDF" BUTTON, command export_to_pdf
+      CREATE "Save Log to PDF" BUTTON, command save_log_to_pdf
+      CREATE "Export Graph to PNG" BUTTON, command export_graph_to_png
+      CREATE "Export HTML Parse Data (XLSX)" BUTTON, command export_html_parse_results_to_excel
+      CREATE LABEL "Results Log:"
+      CREATE SCROLLEDTEXT WIDGET for log_area (initially disabled)
+    END SEQUENCE
+
+  PROCEDURE log(message)
+    SEQUENCE
+      ENABLE log_area
+      INSERT message into log_area
+      SCROLL log_area to end
+      DISABLE log_area
+    END SEQUENCE
+
+  PROCEDURE start_simulation()
+    SEQUENCE
+      GET URLs from url_text
+      GET selected profiles from profiles_vars
+      GET selected tasks from tasks_vars
+      IF URLs IS EMPTY THEN
+        SHOW WARNING "Input Required"
+        RETURN
+      END IF
+      IF selected_profiles IS EMPTY THEN
+        SHOW WARNING "Selection Required"
+        RETURN
+      END IF
+      IF selected_tasks IS EMPTY THEN
+        SHOW WARNING "Selection Required"
+        RETURN
+      END IF
+      CLEAR log_area
+      CLEAR results_df
+      CLEAR all_simulated_users
+      CREATE THREAD simulation_thread, target run_simulation
+      START simulation_thread
+    END SEQUENCE
+
+  PROCEDURE run_simulation(urls, profiles, tasks)
+    SEQUENCE
+      INITIALIZE CHROME DRIVER (headless)
+      INITIALIZE records list
+      INITIALIZE all_users list
+      TRY
+        FOR EACH url IN urls
+          LOG "Testing URL: " + url
+          NAVIGATE DRIVER to url
+          FOR EACH profile_name IN profiles
+            LOG "Profile: " + profile_name
+            CASE profile_name
+              WHEN "Visual Impairment": user = VisualImpairmentUser()
+              WHEN "Motor Impairment": user = MotorImpairmentUser()
+              WHEN "Cognitive Disability": user = CognitiveDisabilityUser()
+              ELSE: user = SimulatedUser(profile_name)
+            END CASE
+            SET user.url_accessed = url
+            CALL load_ai_structured_data(driver, user)
+            ADD user to all_users
+            FOR EACH task IN tasks
+              LOG "  Running task: " + task
+              GET method from user object by task name
+              IF method IS CALLABLE THEN
+                CALL method(driver)
+              ELSE
+                LOG "    Task '" + task + "' not implemented for profile '" + profile_name + "'"
+              END IF
+              CALL run_accessibility_check(driver) returning axe_results, control_violations
+              SET user.axe_violations = axe_results violations
+              CALL generate_smart_agent_report(user, axe_results, control_violations, url) returning smart_report
+              LOG smart_report
+              CALL generate_screen_reader_output(smart_report)
+              CREATE record with simulation data
+              ADD record to records
+            END FOR
+          END FOR
+        END FOR
+      FINALLY
+        QUIT DRIVER
+      END TRY
+      SET self.results_df = records
+      SET self.all_simulated_users = all_users
+      LOG "Simulation completed."
+      CALL plot_results(show=TRUE)
+    END SEQUENCE
+
+  PROCEDURE export_to_excel()
+    IF results_df IS EMPTY THEN
+      SHOW INFO "No Data"
+      RETURN
+    END IF
+    PROMPT USER for filename (Excel)
+    IF filename IS SELECTED THEN
+      SAVE results_df to Excel file
+      SHOW INFO "Export Successful"
+    END IF
+  END SEQUENCE
+
+  PROCEDURE export_to_pdf()
+    IF results_df IS EMPTY THEN
+      SHOW INFO "No Data"
+      RETURN
+    END IF
+    PROMPT USER for filename (PDF)
+    IF filename IS SELECTED THEN
+      CREATE PDF document
+      FOR EACH row IN results_df
+        ADD row data to PDF
+        IF PDF current Y position > page limit THEN
+          ADD NEW PAGE to PDF
+        END IF
+      END FOR
+      SAVE PDF to file
+      SHOW INFO "Export Successful"
+    END IF
+  END SEQUENCE
+
+  PROCEDURE save_log_to_pdf()
+    GET log content from log_area
+    IF log_content IS EMPTY THEN
+      SHOW INFO "No Log Content"
+      RETURN
+    END IF
+    PROMPT USER for filename (PDF)
+    IF filename IS SELECTED THEN
+      CREATE PDF document
+      FOR EACH line IN log_content
+        IF line width > page width THEN
+          ADD line as multi_cell to PDF
+        ELSE
+          ADD line as cell to PDF
+        END IF
+      END FOR
+      SAVE PDF to file
+      SHOW INFO "Save Successful"
+    END IF
+  END SEQUENCE
+
+  PROCEDURE plot_results(show)
+    IF results_df IS EMPTY THEN
+      IF show IS TRUE THEN
+        SHOW INFO "No Data"
+      END IF
+      RETURN NULL
+    END IF
+    GROUP results_df by Profile and calculate mean errors/violations
+    CREATE MATPLOTLIB FIGURE and AXES
+    PLOT BAR GRAPHS for errors/violations by profile
+    SET AXES LABELS and TITLE
+    DISPLAY LEGEND
+    IF show IS TRUE THEN
+      SHOW PLOT
+    END IF
+    RETURN FIGURE
+  END SEQUENCE
+
+  PROCEDURE export_graph_to_png()
+    IF results_df IS EMPTY THEN
+      SHOW INFO "No Data"
+      RETURN
+    END IF
+    CALL plot_results(show=FALSE) returning fig
+    IF fig IS NOT NULL THEN
+      PROMPT USER for filename (PNG)
+      IF filename IS SELECTED THEN
+        SAVE fig to PNG file
+        SHOW INFO "Export Successful"
+      END IF
+      CLOSE fig
+    ELSE
+      SHOW WARNING "Graph Export Error"
+    END IF
+  END SEQUENCE
+
+  PROCEDURE export_html_parse_results_to_excel()
+    IF all_simulated_users IS EMPTY THEN
+      SHOW INFO "No Data"
+      RETURN
+    END IF
+    INITIALIZE all_extracted_data list
+    FOR EACH user IN all_simulated_users
+      IF user.ai_data EXISTS THEN
+        CREATE data_with_context dictionary
+        ADD URL and Profile to data_with_context
+        IF user.ai_data has headings THEN
+          FOR EACH heading IN user.ai_data headings
+            ADD heading level and text to data_with_context
+          END FOR
+        END IF
+        IF user.ai_data has links THEN
+          FOR EACH link IN user.ai_data links
+            ADD link text and href to data_with_context
+          END FOR
+        END IF
+        IF user.ai_data has images THEN
+          FOR EACH image IN user.ai_data images
+            ADD image src and alt to data_with_context
+          END FOR
+        END IF
+        ADD data_with_context to all_extracted_data
+      END IF
+    END FOR
+    IF all_extracted_data IS EMPTY THEN
+      SHOW INFO "No Data"
+      RETURN
+    END IF
+    CREATE DataFrame from all_extracted_data
+    PROMPT USER for filename (Excel)
+    IF filename IS SELECTED THEN
+      SAVE DataFrame to Excel file
+      SHOW INFO "Export Successful"
+    END IF
+  END SEQUENCE
+  START GUI MAIN LOOP
+END SEQUENCE
