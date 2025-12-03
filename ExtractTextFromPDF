@@ -1,0 +1,75 @@
+FUNCTION ExtractTextFromPDF(pdf_path)
+    SEQUENCE
+        text ← ""
+        OPEN document FROM pdf_path
+        FOR each page IN document DO
+            text ← text + page.get_text()
+        END FOR
+        CLOSE document
+        RETURN text
+END FUNCTION
+
+
+FUNCTION ExtractKeywords(text, top_n)
+    SEQUENCE
+        INITIALIZE keyword_model WITH "all-MiniLM-L6-v2"
+        keywords ← keyword_model.extract_keywords(text, ngram_range(1,2), stop_words="english", top_n)
+        RETURN only_keyword_strings(keywords)
+END FUNCTION
+
+
+FUNCTION BuildOntology(keywords)
+    SEQUENCE
+        model ← load_sentence_transformer("all-MiniLM-L6-v2")
+        embeddings ← model.encode(keywords)
+
+        ontology ← EMPTY_DICTIONARY
+
+        FOR i FROM 0 TO length(keywords)-1 DO
+            sims ← compute_cosine_similarities(embeddings[i], embeddings)
+            related_indices ← top_3_similar_indices(sims, excluding=i)
+
+            ontology[keywords[i]] ← EMPTY_LIST
+            FOR each index IN related_indices DO
+                ontology[keywords[i]].append(keywords[index])
+            END FOR
+        END FOR
+
+        RETURN ontology
+END FUNCTION
+
+
+FUNCTION ProcessPDFsInDirectory(directory)
+    SEQUENCE
+        results ← EMPTY_DICTIONARY
+        files ← list_files(directory)
+
+        FOR each file IN files DO
+            IF file ends_with ".pdf" THEN
+                pdf_path ← directory + "/" + file
+                PRINT "Processing: " + file
+
+                text ← ExtractTextFromPDF(pdf_path)
+                keywords ← ExtractKeywords(text, top_n=10)
+                ontology ← BuildOntology(keywords)
+
+                results[file] ← DICTIONARY("keywords": keywords, "ontology": ontology)
+            ELSE
+                CONTINUE
+            END IF
+        END FOR
+
+        RETURN results
+END FUNCTION
+
+
+MAIN PROGRAM
+    SEQUENCE
+        INPUT directory
+
+        results ← ProcessPDFsInDirectory(directory)
+
+        WRITE results TO "pdf_keywords_ontology.json"
+
+        PRINT "Extraction complete!"
+END PROGRAM
