@@ -1,0 +1,79 @@
+SEQUENCE
+    DEFINE keywords = [
+        "artificial intelligence for disabled",
+        "AI disability",
+        "accessibility of AI",
+        "evaluation of AI for impaired people"
+    ]
+
+    CREATE DIRECTORY "papers" IF NOT EXISTS
+
+    FOR EACH kw IN keywords DO
+        PRINT "Searching for: " + kw
+        CALL download_arxiv_papers(kw, 200)
+    END FOR
+END SEQUENCE
+
+FUNCTION download_arxiv_papers(keyword, max_papers)
+
+    SET downloaded_ids = empty set
+    SET per_request = 100
+    SET total_downloaded = 0
+
+    FOR start = 0 TO max_papers STEP per_request DO
+
+        SET remaining = max_papers - total_downloaded
+        IF remaining < per_request THEN
+            SET fetch_count = remaining
+        ELSE
+            SET fetch_count = per_request
+        END IF
+
+        REPLACE spaces in keyword WITH "+"
+        SET url = "http://export.arxiv.org/api/query?search_query=all:" + keyword +
+                  "&start=" + start + "&max_results=" + fetch_count
+
+        SEND HTTP GET request → response
+        PARSE response XML → root
+
+        FIND entries = all XML nodes named "entry"
+
+        IF entries IS EMPTY THEN
+            BREAK FOR LOOP
+        END IF
+
+        FOR EACH entry IN entries DO
+            EXTRACT arxiv_id from entry
+
+            IF arxiv_id IS IN downloaded_ids THEN
+                CONTINUE TO NEXT entry
+            ELSE
+                ADD arxiv_id TO downloaded_ids
+            END IF
+
+            EXTRACT title FROM entry
+            SET pdf_url = "https://arxiv.org/pdf/" + arxiv_id + ".pdf"
+
+            SEND HTTP GET pdf_url → pdf_response
+
+            IF pdf_response.status == 200 THEN
+                SET filename = "papers/" + arxiv_id + ".pdf"
+                SAVE pdf_response.content TO filename
+                PRINT "Downloaded: " + title + " (" + arxiv_id + ")"
+            ELSE
+                PRINT "Failed to download: " + title + " (" + arxiv_id + ")"
+            END IF
+
+            INCREMENT total_downloaded
+
+            IF total_downloaded ≥ max_papers THEN
+                RETURN FROM FUNCTION
+            END IF
+
+        END FOR
+
+        WAIT 3 seconds  // server delay
+
+    END FOR
+
+END FUNCTION
